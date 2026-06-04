@@ -15,15 +15,16 @@ app.get("/", (req, res) => {
 
 app.post("/predict", async (req, res) => {
   try {
-    const { text } = req.body;
+    const { text, type } = req.body;
 
-    if (!text) {
-      return res.status(400).json({ error: "Text is required" });
+    if (!text || !type) {
+      return res.status(400).json({ error: "Text and type are required" });
     }
 
 
     const response = await axios.post(process.env.API, {
       text: text,
+      type: type
     });
 
 
