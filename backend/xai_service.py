@@ -2,14 +2,16 @@ import joblib
 import numpy as np
 from lime.lime_text import LimeTextExplainer
 
-# Load models once when the app starts (this is better for performance)
-model = joblib.load('backend/linear_svm_model.pkl')
-vectorizer = joblib.load('backend/tfidf_vectorizer.pkl')
+class XAIService:
+    def __init__(self, model_path='backend/linear_svm_model.pkl', vectorizer_path='backend/tfidf_vectorizer.pkl'):
+        # Load models once during initialization
+        self.model = joblib.load(model_path)
+        self.vectorizer = joblib.load(vectorizer_path)
+        self.explainer = LimeTextExplainer(class_names=['Ham', 'Spam'])
 
-def get_explanation(text):
-    def predict_proba_wrapper(texts):
-        features = vectorizer.transform(texts)
-        decision = model.decision_function(features)
+    def _predict_proba_wrapper(self, texts):
+        features = self.vectorizer.transform(texts)
+        decision = self.model.decision_function(features)
         if decision.ndim > 1:
             decision = decision[:, 1]
         probs = 1 / (1 + np.exp(-decision))
@@ -19,8 +21,11 @@ def get_explanation(text):
         prob_matrix[:, 0] = 1 - probs
         return prob_matrix
 
-    explainer = LimeTextExplainer(class_names=['Ham', 'Spam'])
-    exp = explainer.explain_instance(text, predict_proba_wrapper, num_features=5)
-    
-    # Return the data in a format ready for JSON
-    return [[str(word), float(score)] for word, score in exp.as_list()]
+    def get_local_explanation(self, text):
+        """Generates LIME explanation for a single prediction."""
+        exp = self.explainer.explain_instance(text, self._predict_proba_wrapper, num_features=5)
+        return [[str(word), float(score)] for word, score in exp.as_list()]
+
+    def get_global_importance(self):
+        """Placeholder for future SHAP global feature importance integration."""
+        return {"message": "SHAP global explainer is currently under development."}

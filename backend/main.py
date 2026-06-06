@@ -3,18 +3,15 @@ import joblib
 from fastapi import FastAPI, HTTPException, APIRouter
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from backend.xai_service import get_explanation
-
-# import environment config
+from backend.xai_service import XAIService
 from backend.config import FRONTEND_URL, BASE_URL, PORT
-
-# Load your models
-# Ensure these files are in the root directory
+xai_service = XAIService()
 
 model = joblib.load("backend/linear_svm_model.pkl")
 vectorizer = joblib.load("backend/tfidf_vectorizer.pkl")
 
 app = FastAPI(title="Spam Detection System")
+xai_service = XAIService()
 
 # ── CORS setup ────────────────────────────────────────────────
 app.add_middleware(
@@ -37,23 +34,19 @@ class PredictIn(BaseModel):
 @app.post("/predict")
 def predict(body: PredictIn):
     try:
-        # Vectorize
-        vectorized_text = vectorizer.transform([body.text])
+        # 1. Standard Prediction Logic
+        vectorized_text = xai_service.vectorizer.transform([body.text])
+        prediction = int(xai_service.model.predict(vectorized_text)[0])
         
-        # 1. FIX: Use .item() to convert numpy.int64 to a standard Python int
-        prediction = model.predict(vectorized_text)[0].item() 
+        # 2. Use the new service class for the explanation
+        explanation = xai_service.get_local_explanation(body.text)
         
-        # 2. Add the explanation (as we did before)
-        explanation = get_explanation(body.text)
-        
-        # 3. Return the clean data
         return {
             "prediction": prediction,
             "explanation": explanation
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-
 # ── Basic health check ────────────────────────────────────────
 @app.get("/")
 def root():
