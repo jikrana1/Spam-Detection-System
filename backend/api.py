@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import joblib
 import os
 from dotenv import load_dotenv
+from domain_checker import analyze_text
 
 load_dotenv()
 
@@ -28,24 +29,33 @@ def home():
 def predict():
     try:
         data = request.get_json()
-
         text = data.get("text")
+        
         if not text:
-            # Simple file append for warning
             with open("api.log", "a") as f:
                 f.write(f"WARNING: No text provided at {__import__('datetime').datetime.now()}\n")
             return jsonify({"error": "No text provided"}), 400
 
+        # Get spam prediction
         text_vector = vectorizer.transform([text])
         prediction = model.predict(text_vector)
         final_output = label_encoder.inverse_transform(prediction)[0]
+        
+        # Get domain analysis
+        domain_analysis = analyze_text(text)
 
-        # Simple file append for prediction log
+        # Log prediction
         text_preview = text[:50] + "..." if len(text) > 50 else text
         with open("api.log", "a") as f:
             from datetime import datetime
             f.write(f"{datetime.now()} - Prediction: '{text_preview}' -> {final_output}\n")
-        return jsonify({"input": text, "prediction": final_output})
+        
+        # Return response with domain analysis
+        return jsonify({
+            "input": text,
+            "prediction": final_output,
+            "domain_analysis": domain_analysis
+        })
 
     except Exception as e:
         with open("api.log", "a") as f:
