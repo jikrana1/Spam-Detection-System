@@ -7,9 +7,11 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 from domain_checker import analyze_text
 from pathlib import Path
+from flask_cors import CORS
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
 MODEL_PATH = os.getenv("MODEL_PATH")
 VECTORIZER_PATH = os.getenv("VECTORIZER_PATH")
