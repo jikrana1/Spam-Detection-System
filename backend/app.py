@@ -1,5 +1,6 @@
 import time
 import logging
+from logging.handlers import RotatingFileHandler
 from flask import request, g
 from flask import Flask,request,jsonify
 import os
@@ -16,15 +17,17 @@ load_dotenv()
 app=Flask(__name__)
 
 # ─── LOGGING CONFIGURATION ──────────────────────────────────────
+log_handler = RotatingFileHandler('api.log', maxBytes=10485760, backupCount=5)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('api.log'),
+        log_handler,
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
+app.logger.addHandler(log_handler)
 
 # ─── REQUEST LOGGING MIDDLEWARE ────────────────────────────────
 @app.before_request
@@ -114,22 +117,19 @@ def predict():
         text = data.get("text")
         
         if not text:
-            with open("api.log", "a") as f:
-                f.write(f"WARNING: No text provided at {datetime.now()}\n")
+            logger.warning("No text provided for prediction")
             return jsonify({"error": "No text provided"}), 400
 
         text_vector = vectorizer.transform([text])
         prediction = model.predict(text_vector)
         final_output = label_encoder.inverse_transform(prediction)[0]
 
-        with open("api.log", "a") as f:
-            f.write(f"{datetime.now()} - Prediction: '{text[:50]}...' -> {final_output}\n")
+        logger.info(f"Prediction: '{text[:50]}...' -> {final_output}")
             
         return jsonify({"input": text, "prediction": final_output})
 
     except Exception as e:
-        with open("api.log", "a") as f:
-            f.write(f"{datetime.now()} - ERROR: {str(e)}\n")
+        logger.error(f"Prediction error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 

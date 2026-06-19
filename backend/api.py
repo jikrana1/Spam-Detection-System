@@ -186,7 +186,8 @@ def predict():
         return jsonify({
             "input": text, 
             "prediction": final_output
-        
+        })
+    
         # Return response with domain analysis
         return jsonify({
             "input": text,
