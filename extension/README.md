@@ -18,9 +18,41 @@ Spam Detection System classification API as its backend. Implements issue #187.
 
 ## Install (development / unpacked)
 
+This extension is not on the Chrome Web Store or Firefox AMO — it ships as
+source code in this repo, inside the `extension/` folder. You need that
+folder on your local disk before a browser can load it.
+
+### Step 1: Get the `extension/` folder onto your machine
+
+Pick whichever is easiest for you:
+
+- **Clone the whole repo (recommended if you'll also run the backend):**
+  ```sh
+  git clone https://github.com/Rudra-clrscr/Spam-Detection-System.git
+  cd Spam-Detection-System
+  git checkout feature/187-browser-extension
+  ```
+  The extension lives at `Spam-Detection-System/extension`.
+
+- **Download just this PR's `extension/` folder as a zip, no git required:**
+  1. Go to <https://download-directory.github.io/>
+  2. Paste this URL and press enter:
+     `https://github.com/Rudra-clrscr/Spam-Detection-System/tree/feature/187-browser-extension/extension`
+  3. Unzip the downloaded file.
+
+- **Download the whole branch as a zip from GitHub's UI:** on the
+  [`feature/187-browser-extension` branch page](https://github.com/Rudra-clrscr/Spam-Detection-System/tree/feature/187-browser-extension),
+  click the green "Code" button → "Download ZIP", then unzip and open the
+  `extension` subfolder.
+
+### Step 2: Load it into your browser
+
 **Chrome / Edge / Brave:**
-1. Go to `chrome://extensions`, enable "Developer mode".
-2. Click "Load unpacked" and select the `extension/` folder.
+1. Go to `chrome://extensions`, enable "Developer mode" (toggle, top-right).
+2. Click "Load unpacked" and select the `extension/` folder (the one
+   containing `manifest.json` directly — not its parent).
+3. You should see "Spam Detection Inbox Scanner" appear in the list with a
+   purple envelope icon and no error badge.
 
 **Firefox:**
 1. Go to `about:debugging#/runtime/this-firefox`.
@@ -62,10 +94,19 @@ entry in `manifest.json` before loading the extension (or use
   are based on current unofficial markup and **will break** if Google/Microsoft
   change their markup. If badges stop appearing, inspect a message row in
   devtools and update the selectors at the top of the relevant file.
-- Confirmed loading unpacked in a real Chrome profile with no manifest/
-  background errors (service worker starts cleanly). Scanning behavior
-  against a live, logged-in Gmail/Outlook inbox still needs end-to-end
-  verification by whoever has that session available.
+- Loaded unpacked against a real, logged-in Gmail inbox: badges rendered on
+  visible rows, and the classification pipeline (content script → background
+  worker → Node `/predict` → Flask ML API) was confirmed via backend logs to
+  return real Safe/Spam/Smishing predictions for real message subjects/
+  previews. Visual confirmation that every badge displays the correct label
+  in the browser (vs. a stale/failed state) is still pending re-check after
+  a backend restart during testing. Outlook web has not been separately
+  verified live — its selectors are still best-effort.
+- A failed scan (e.g. backend temporarily unreachable) renders a "Scan
+  failed" badge and is **not cached**, so it retries automatically the next
+  time the inbox DOM updates — this is intentional, not a bug, but can look
+  alarming if every row shows it briefly while the backend is still starting
+  up.
 
 ## Publishing (optional follow-up)
 
