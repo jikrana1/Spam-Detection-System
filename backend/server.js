@@ -1,3 +1,4 @@
+const { formatError, errorMiddleware, errorCodes } = require('./utils/errorHelper');
 require("dotenv").config();
 const dns = require("dns");
 dns.setServers(["8.8.8.8", "1.1.1.1"]); // ensure SRV records resolve on all networks
@@ -642,6 +643,7 @@ app.use((err, req, res, next) => {
   }
   next(err);
 });
+app.use(errorMiddleware);
 // ====== START SERVER ======
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
