@@ -8,6 +8,18 @@ const express = require("express");
 const { getHealthStatus } = require('./utils/healthCheck');
 const cors = require("cors");
 const axios = require("axios");
+
+// Configure global request interceptor to append the internal secret API key
+axios.interceptors.request.use(
+  (config) => {
+    const internalSecret = process.env.INTERNAL_SECRET || "super-secret-internal-key";
+    config.headers["X-Internal-Secret"] = internalSecret;
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 const mongoose = require("mongoose");
 
 const History = require("./models/History");
