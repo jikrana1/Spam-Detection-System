@@ -64,25 +64,61 @@ const History = () => {
         document.body.removeChild(link);
     };
 
+    const handleExportPDF = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await axios.get('/api/reports/export-pdf', {
+                headers: { Authorization: `Bearer ${token}` },
+                responseType: 'blob', // Important for handling binary data
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'spam_detection_report.pdf');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error('Error downloading PDF:', error);
+            alert('Failed to download PDF report');
+        }
+    };
+
     return (
         <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h2 style={{ margin: 0 }}>History</h2>
-                <button 
-                    onClick={handleExportCSV}
-                    disabled={history.length === 0}
-                    style={{
-                        background: history.length === 0 ? '#9ca3af' : '#3b82f6',
-                        color: 'white',
-                        padding: '8px 16px',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: history.length === 0 ? 'not-allowed' : 'pointer',
-                        fontWeight: '600'
-                    }}
-                >
-                    Download CSV
-                </button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                    <button 
+                        onClick={handleExportCSV}
+                        disabled={history.length === 0}
+                        style={{
+                            background: history.length === 0 ? '#9ca3af' : '#3b82f6',
+                            color: 'white',
+                            padding: '8px 16px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: history.length === 0 ? 'not-allowed' : 'pointer',
+                            fontWeight: '600'
+                        }}
+                    >
+                        Download CSV
+                    </button>
+                    <button 
+                        onClick={handleExportPDF}
+                        style={{
+                            background: '#10b981',
+                            color: 'white',
+                            padding: '8px 16px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: '600'
+                        }}
+                    >
+                        Export as PDF
+                    </button>
+                </div>
             </div>
 
             {selectedItems.length > 0 && (

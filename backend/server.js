@@ -164,18 +164,21 @@ const authRoutes = require("./routes/authRoutes");
 const historyRoutes = require("./routes/historyRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
 const chatRoutes = require("./routes/chatRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 
 // Versioned routes (v1)
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/history", historyRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
 app.use("/api/v1/chat", chatRoutes);
+app.use("/api/v1/reports", reportRoutes);
 
 // Keep old routes for backward compatibility
 app.use("/api/auth", authRoutes);
 app.use("/api/history", historyRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/reports", reportRoutes);
 
 const { protect } = require("./middleware/authMiddleware");
 
