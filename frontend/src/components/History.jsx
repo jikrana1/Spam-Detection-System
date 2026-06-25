@@ -103,7 +103,28 @@ const History = () => {
             )}
 
             {history.length === 0 ? (
-                <p>No history found.</p>
+                <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f9fafb', borderRadius: '12px', border: '2px dashed #e5e7eb', marginTop: '20px' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>📦</div>
+                    <h3 style={{ margin: '0 0 8px 0', color: '#374151', fontSize: '20px' }}>No scan history yet</h3>
+                    <p style={{ margin: '0 0 24px 0', color: '#6b7280', fontSize: '14px' }}>It looks like you haven't scanned any messages or emails.</p>
+                    <button 
+                        onClick={() => window.location.href = '/'}
+                        style={{
+                            background: '#3b82f6',
+                            color: 'white',
+                            padding: '10px 20px',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            transition: 'all 0.2s'
+                        }}
+                        onMouseOver={(e) => e.target.style.background = '#2563eb'}
+                        onMouseOut={(e) => e.target.style.background = '#3b82f6'}
+                    >
+                        Go to Dashboard
+                    </button>
+                </div>
             ) : (
                 history.map(item => (
                     <div
