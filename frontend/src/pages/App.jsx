@@ -393,14 +393,20 @@ function SpamDetector() {
             )}
 
             <div className="flex justify-end items-center mt-1.5 px-1 text-xs font-medium tracking-wide opacity-70">
-              <span className={text.length > 500 ? "text-orange-500" : ""}>
-                {text.length.toLocaleString()} characters
-              </span>
+              {text.length > 5000 ? (
+                <span className="text-red-500 font-bold">
+                  {text.length.toLocaleString()} / 5000 characters (Limit exceeded)
+                </span>
+              ) : (
+                <span className={text.length > 500 ? "text-orange-500" : ""}>
+                  {text.length.toLocaleString()} characters
+                </span>
+              )}
             </div>
           </div>
           <button
             onClick={handlePredict}
-            disabled={loading}
+            disabled={loading || text.length > 5000}
             className={`mt-2 w-full py-3.5 rounded-xl font-bold text-white shadow-md active:scale-95 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${activeTheme.accent}`}
           >
             {loading && (
