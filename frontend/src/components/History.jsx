@@ -4,6 +4,13 @@ import axios from 'axios';
 const History = () => {
     const [history, setHistory] = useState([]);
     const [selectedItems, setSelectedItems] = useState([]);
+    const [sortOrder, setSortOrder] = useState('newest');
+
+    const sortedHistory = [...history].sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0);
+        const dateB = new Date(b.createdAt || 0);
+        return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+    });
 
     const fetchHistory = async () => {
         try {
@@ -68,8 +75,24 @@ const History = () => {
         <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h2 style={{ margin: 0 }}>History</h2>
-                <button 
-                    onClick={handleExportCSV}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                    <select
+                        value={sortOrder}
+                        onChange={(e) => setSortOrder(e.target.value)}
+                        style={{
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid #d1d5db',
+                            background: '#f9fafb',
+                            cursor: 'pointer',
+                            fontWeight: '500'
+                        }}
+                    >
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                    </select>
+                    <button 
+                        onClick={handleExportCSV}
                     disabled={history.length === 0}
                     style={{
                         background: history.length === 0 ? '#9ca3af' : '#3b82f6',
@@ -83,6 +106,7 @@ const History = () => {
                 >
                     Download CSV
                 </button>
+                </div>
             </div>
 
             {selectedItems.length > 0 && (
@@ -105,7 +129,7 @@ const History = () => {
             {history.length === 0 ? (
                 <p>No history found.</p>
             ) : (
-                history.map(item => (
+                sortedHistory.map(item => (
                     <div
                         key={item._id}
                         style={{
