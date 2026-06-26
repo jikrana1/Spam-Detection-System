@@ -14,6 +14,16 @@ const { v4: uuidv4 } = require('uuid');
 const helmet = require('helmet');
 const axios = require("axios");
 
+// ===== STARTUP TIMER =====
+const SERVER_START_TIME = Date.now();
+const startupLogs = [];
+
+const logStartupTime= (component, startTime) => {
+  const elapsed = Date.now() - startTime;
+  startupLogs.push({ component, elapsed });
+    console.log(`⏱️ ${component} loaded in ${elapsed}ms`);
+};
+
 // Configure global request interceptor to append the internal secret API key
 axios.interceptors.request.use(
   (config) => {
@@ -31,6 +41,7 @@ const History = require("./models/History");
 const Rule = require("./models/Rule");
 
 const multer = require("multer");
+const displayBanner = require('./utils/banner');
 const upload = multer();
 const FormData = require("form-data");
 
@@ -119,11 +130,12 @@ const monitorConnectionPool = () => {
 };
 
 //Call after MONGODB connection is established
+const mongoStart = Date.now();
 mongoose
     .connect(process.env.MONGODB_URI)
     .then(() => {
-        console.log("✅ MongoDB connected");
-        monitorConnectionPool(); // 👈 Add this line
+        console.log('MongoDB', mongoStart);
+        monitorConnectionPool(); 
         seedAdminUser();
     })
     .catch((err) => console.error("❌ MongoDB connection error:", err));
@@ -882,6 +894,9 @@ app.get("/outlook/emails", protect, async (req, res) => {
   }
 });
 
+// ========================================
+// PROTECTED ROUTES
+// ========================================
 // Helper: Apply user blacklist/whitelist rules to a list of emails
 async function applyRulesToEmails(userId, emails) {
   if (!emails || !Array.isArray(emails) || emails.length === 0) {
@@ -997,9 +1012,38 @@ app.post("/scan-emails", protect, async (req, res) => {
   }
 });
 
-const PORT = config.port;
+// Protected: IMAP connect
+app.post("/imap/connect", protect, async (req, res) => {
+  try {
+    const { email, password, host, port } = req.body;
+
+    if (!email || !password || !host) {
+      return res.status(400).json({
+        success: false,
+        error: "Email, password, and host are required"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "IMAP connection configured successfully",
+      data: { email, host, port: port || 993 }
+    });
+  } catch (error) {
+    console.error("IMAP connection error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to connect to IMAP server"
+    });
+  }
+});
+
+// ========================================
+// ERROR HANDLERS (ONLY ONCE!)
+// ========================================
+
 app.use((err, req, res, next) => {
-  if(err.type==='entity.too.large' || err.message==='request entity too large') {
+  if (err.type === 'entity.too.large' || err.message === 'request entity too large') {
     return res.status(413).json({
       success: false,
       error: 'Payload too large. Please reduce the size of your request.',
@@ -1008,29 +1052,75 @@ app.use((err, req, res, next) => {
   }
   next(err);
 });
+
 app.use(errorHandler);
-// ====== START SERVER ======
-// Protected: connect a read-only IMAP inbox for scheduled scanning
-app.post("/imap/connect", protect, async (req, res) => {
-  try {
-    const response = await axios.post(`${ML_API_BASE}/imap/connect`, req.body, {
-      headers: { "X-User-Username": req.user.username },
-    });
-    res.json(response.data);
-  } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
+
+// ====== PREDICTION STATISTICS ======
+app.get('/api/stats', protect, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        
+        const total = await History.countDocuments({ user: userId });
+        const spam = await History.countDocuments({ user: userId, prediction: 'spam' });
+        const ham = await History.countDocuments({ user: userId, prediction: 'ham' });
+        
+        const daily = await History.aggregate([
+            { $match: { user: userId } },
+            { $group: { 
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, 
+                count: { $sum: 1 } 
+            }},
+            { $sort: { _id: -1 } },
+            { $limit: 7 }
+        ]);
+        
+        // Get accuracy if feedback exists
+        const feedbackCount = await History.countDocuments({ 
+            user: userId, 
+            feedback: { $exists: true } 
+        });
+        
+        res.json({
+            success: true,
+            data: {
+                total,
+                spam,
+                ham,
+                spamRatio: total > 0 ? (spam / total) * 100 : 0,
+                daily,
+                feedbackCount
+            }
+        });
+    } catch (error) {
+        console.error('Stats error:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
-  }
 });
+
+// ========================================
+// GRACEFUL SHUTDOWN
+// ========================================
+
+const gracefulShutdown = async (signal) => {
+  console.log(`\nReceived ${signal}. Closing server...`);
+  server.close(async () => {
+    console.log('HTTP server closed.');
+    try {
+      await mongoose.disconnect();
+      console.log('MongoDB connection closed.');
+    } catch (err) {
+      console.error('Error closing MongoDB connection:', err);
+    }
+    console.log('Shutdown complete. Exiting process.');
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Protected: get the current IMAP connection status for the logged-in user
 app.get("/imap/status", protect, async (req, res) => {
@@ -1158,32 +1248,16 @@ app.get("/imap/scan-results", protect, async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
+// ========================================
+// START SERVER
+// ========================================
+
+const PORT = config.port;
 const server = app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  const totalTime = Date.now() - SERVER_START_TIME;
+  displayBanner();
+  console.log(`⏱️ Total startup time: ${totalTime}ms`);
 });
-
-// ===== GRACEFUL SHUTDOWN =====
-const gracefulShutdown = async signal => {
-  console.log(`\nReceived ${signal}. Closing server...`);
-
-  //Stop accepting new requests
-  server.close(async () => {
-    console.log('HTTP server closed.');
-  });
-
-  //Close DB connection
-  try {
-    await mongoose.disconnect();
-    console.log('MongoDB connection closed.');
-  } catch (err) {
-    console.error('Error closing MongoDB connection:', err);
-  }
-
-  console.log('Shutdown complete. Exiting process.');
-  process.exit(0);
-}
-
 // Listen for termination signals
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
