@@ -109,16 +109,16 @@ const connectWithRetry = async (retries=5, delay=5000) => {
 
 //MONGODB CONNECTION POOL MONITORING
 const monitorConnectionPool = () => {
-  setInterval(() => {
+  const timer = setInterval(() => {
     try {
       const pool = mongoose.connection.client.topology.s.pool;
       if(pool) {
-        const size= pool.size||0;
-        const available= pool.availableConnections||0;
-        const used= pool.usedCount||0;
+        const size = pool.size || 0;
+        const available = pool.availableConnections || 0;
+        const used = pool.usedCount || 0;
         const usagePercent = size > 0 ? (used / size) * 100 : 0;
 
-        console.log(`[DB Pool] Size: ${size}, Available: ${available}, Used: ${used} (${usagePercent}%)`);
+        console.debug(`[DB Pool] Size: ${size}, Available: ${available}, Used: ${used} (${usagePercent}%)`);
 
         //Alert if usage exceeds 80%
         if(usagePercent > 80){
@@ -127,7 +127,9 @@ const monitorConnectionPool = () => {
       }
     } catch (err) {
     }
-  },3000); // every 3 seconds
+  }, 60000); // every 60 seconds
+
+  timer.unref(); // prevent this interval from blocking graceful shutdown
 };
 
 
