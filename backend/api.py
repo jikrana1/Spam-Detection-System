@@ -4,6 +4,7 @@ import joblib
 import numpy as np
 import os
 import re
+import hmac
 from collections import Counter
 from urllib.parse import urlparse
 from dotenv import load_dotenv
@@ -41,6 +42,37 @@ app = Flask(__name__)
 
 xai_engine = ExplanationEngine()
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+
+# Shared secret that the trusted Node/Express backend attaches to every request
+# (see the axios interceptor in server.js). Enforcing it on every ML API call
+# ensures the model endpoints can't be hit directly by clients that merely have
+# network access to the Flask port.
+INTERNAL_SECRET = os.getenv("INTERNAL_SECRET", "super-secret-internal-key")
+
+# Paths reachable without the internal secret (liveness/readiness probes).
+PUBLIC_PATHS = {"/", "/health"}
+
+
+@app.before_request
+def require_internal_secret():
+    # During automated tests the gate is off by default so unit tests can call
+    # ML routes directly; the dedicated security test opts in by setting
+    # app.config["ENFORCE_INTERNAL_SECRET"] = True. In real deployments TESTING
+    # is never set, so the gate is always active.
+    if app.config.get("TESTING") and not app.config.get("ENFORCE_INTERNAL_SECRET"):
+        return None
+    # Let CORS preflight requests through; they never carry custom headers.
+    if request.method == "OPTIONS":
+        return None
+    if request.path in PUBLIC_PATHS:
+        return None
+    provided = request.headers.get("X-Internal-Secret", "")
+    # Constant-time comparison avoids leaking the secret via timing.
+    if not provided or not hmac.compare_digest(provided, INTERNAL_SECRET):
+        return jsonify({
+            "error": "Forbidden: requests must originate from the trusted backend"
+        }), 403
+
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -115,6 +147,10 @@ def heuristic_url_is_malicious(url):
     return tld in SUSPICIOUS_TLDS
 
 
+# Maximum number of characters accepted by the /predict endpoint. Anything
+# longer is rejected up front to avoid slow ML inference and memory spikes.
+MAX_MESSAGE_LENGTH = int(os.getenv("MAX_MESSAGE_LENGTH", 10000))
+
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -135,23 +171,55 @@ def health():
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+
         text = data.get("text")
-        
+
         input_type = data.get("type", "message")
-        if not text:
+
+        # Reject missing/empty input.
+        if text is None or (isinstance(text, str) and not text.strip()):
             with open(LOG_FILE, "a") as f:
                 f.write(f"WARNING: No text provided at {__import__('datetime').datetime.now()}\n")
             return jsonify({"error": "No text provided"}), 400
+
+        # Strict type checking: the message field must be a string.
+        if not isinstance(text, str):
+            return jsonify({
+                "error": f"'text' must be a string, got {type(text).__name__}"
+            }), 400
+
+        # Maximum-length validation before any vectorization/inference work.
+        if len(text) > MAX_MESSAGE_LENGTH:
+            return jsonify({
+                "error": (
+                    f"'text' exceeds maximum length of {MAX_MESSAGE_LENGTH} "
+                    f"characters (got {len(text)})"
+                )
+            }), 400
 
         # Translate incoming text to English if it is not in English
         original_text = text
         detected_language = "en"
         translated = False
         
+        # Reject whitespace-only input before it reaches the model: a blank
+        # string would otherwise be vectorized to an arbitrary, meaningless
+        # label. (Missing/empty text is already handled by the check above.)
+        if isinstance(text, str) and not text.strip():
+            return jsonify({"error": "No text provided"}), 400
+
         if input_type != "url" and text.strip():
             try:
-                from langdetect import detect
+                from langdetect import detect, DetectorFactory
+                # langdetect is non-deterministic by default: the same text can
+                # be detected as different languages across calls, which would
+                # translate (or not) inconsistently and flip the final label.
+                # A fixed seed makes detection — and thus the prediction —
+                # reproducible for identical input.
+                DetectorFactory.seed = 0
                 detected_language = detect(text)
             except Exception:
                 detected_language = "en"
@@ -628,9 +696,8 @@ def _require_username():
     """The Node gateway authenticates the user and forwards their identity via this
     header. We also verify the internal secret for security.
     """
-    secret = request.headers.get("X-Internal-Secret")
-    expected_secret = os.getenv("INTERNAL_SECRET", "super-secret-internal-key")
-    if not secret or secret != expected_secret:
+    secret = request.headers.get("X-Internal-Secret", "")
+    if not secret or not hmac.compare_digest(secret, INTERNAL_SECRET):
         return None
     username = request.headers.get("X-User-Username")
     if not username:

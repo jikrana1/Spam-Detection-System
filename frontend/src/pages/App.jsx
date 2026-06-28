@@ -41,6 +41,21 @@ function SpamDetector() {
     if (trimmed.length < 160 && !trimmed.includes('\n')) return 'sms';
     return 'message';
   };
+  if (!text || text.trim().length === 0) return 'message';
+  const trimmed = text.trim();
+  if (trimmed.includes('http://') || trimmed.includes('https://')) return 'url';
+  if (trimmed.includes('@') && trimmed.includes('.')) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (emailRegex.test(trimmed)) return 'email';
+  }
+  if (trimmed.length < 160 && !trimmed.includes('\n')) return 'sms';
+  return 'message';
+};
+
+  const [darkMode, setDarkMode] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [theme, setTheme] = useState("ocean");
+  const [showThemes, setShowThemes] = useState(false);
 
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState(() => {
@@ -78,33 +93,13 @@ function SpamDetector() {
       });
       setResult(res.data.prediction);
       setConfidence(res.data.confidence ?? null);
+    } catch {
+      setExplanation(res.data.explanation ?? null);
     } catch (error) {
       setResult("Error");
     } finally {
       setLoading(false);
     }
-  };
-
-  const getColor = () => {
-    if (result === "ham" || result === "safe")
-      return "text-green-600 dark:text-green-400";
-    if (result === "spam" || result === "malicious")
-      return "text-red-600 dark:text-red-400";
-    if (result === "smishing") return "text-orange-600 dark:text-orange-400";
-    if (result === "Error") {
-      return isDark ? "text-yellow-300" : "text-yellow-700";
-    }
-    return isDark ? "text-slate-300" : "text-slate-600";
-  };
-
-  const getBg = () => {
-    if (result === "ham" || result === "safe")
-      return "bg-green-500/15 border border-green-500/35";
-    if (result === "spam" || result === "malicious")
-      return "bg-red-500/15 border border-red-500/35";
-    if (result === "smishing")
-      return "bg-orange-500/15 border border-orange-500/35";
-    return "bg-slate-500/15 border border-slate-500/35";
   };
 
   const confidencePct =
@@ -127,6 +122,9 @@ function SpamDetector() {
       <div className="absolute top-4 right-4 flex gap-3 flex-wrap justify-end">
         <button
           onClick={() => setThemeMode(isDark ? 'light' : 'dark')}
+          onClick={() => {
+            setThemeMode(isDark ? 'light' : 'dark');
+          }}
           className="px-4 py-2.5 rounded-xl font-bold transition-all active:scale-95 flex items-center gap-2 shadow-md"
           style={{
             background: isDark ? '#fbbf24' : '#1e293b',
@@ -138,7 +136,6 @@ function SpamDetector() {
           {isDark ? '☀️' : '🌙'}
         </button>
         <InstallAppButton />
-
         <button
           onClick={() => setShowSettings(!showSettings)}
           className={`px-4 py-2.5 rounded-xl font-bold transition-all active:scale-95 flex items-center gap-2 shadow-md ${
@@ -149,7 +146,6 @@ function SpamDetector() {
         >
           ⚙️ Customize Theme
         </button>
-
         <button
           onClick={handleLogout}
           className="px-4 py-2.5 rounded-xl font-bold bg-red-650 hover:bg-red-600 text-white transition-all active:scale-95 shadow-md"
@@ -186,6 +182,21 @@ function SpamDetector() {
             } catch(err) {
               alert('Failed to upload avatar: ' + (err.response?.data?.error || err.message));
             }
+             const file = e.target.files[0];
+             if (!file) return;
+             const formData = new FormData();
+             formData.append('avatar', file);
+             try {
+                const res = await api.post(`/api/v1/auth/avatar`, formData, {
+                   headers: { 
+                     'Content-Type': 'multipart/form-data'
+                   }
+                });
+                localStorage.setItem('user', JSON.stringify(res.data.user));
+                login(res.data.user);
+             } catch(err) {
+                alert('Failed to upload avatar: ' + (err.response?.data?.error || err.message));
+             }
           }} />
         </label>
         <span
@@ -472,6 +483,7 @@ function SpamDetector() {
                         : "bg-white/70 border-slate-200"
                     }`}
                   >
+                    {/* Heading */}
                     <div className="flex justify-between items-center mb-5">
                       <div className="flex items-center gap-2">
                         <h2 className="text-lg font-bold">📊 Analysis Result</h2>
@@ -491,6 +503,8 @@ function SpamDetector() {
                           {copied ? "✅" : "📋"}
                         </button>
                       </div>
+
+                      {/* Badge */}
                       <span
                         className={`px-4 py-2 rounded-full text-sm font-bold ${
                           result === "ham" || result === "safe"
@@ -511,6 +525,7 @@ function SpamDetector() {
                       </span>
                     </div>
 
+                    {/* Confidence */}
                     {confidence !== null && result !== "Error" && (
                       <>
                         <p className="text-sm opacity-70 mb-1">Confidence Score</p>
@@ -587,6 +602,106 @@ function SpamDetector() {
                         </p>
                       </div>
                     )}
+                    <div className="mt-4 text-left">
+                     <p className="text-xs font-semibold mb-1 opacity-70">
+                        Model Confidence: {confidencePct}%
+                        </p>
+                          <div className={`w-full rounded-full h-2 ${isDark ? "bg-slate-800" : "bg-slate-200"}`}>
+                           <div
+                             className={`h-3 rounded-full transition-all duration-500 ${
+                             result === "ham" || result === "safe"
+                             ? "bg-green-500"
+                             : result === "spam" || result === "malicious"
+                             ? "bg-red-500"
+                             : "bg-orange-500"
+                            }`}
+                            style={{ width: `${confidencePct}%` }}
+                            />
+                          </div>
+
+                    {/* Risk Level */}
+                    <div className="mb-5">
+                      <p className="text-sm opacity-70 mb-2">Risk Level</p>
+                      <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+                      riskLevel === "Low"
+                      ? "bg-green-100 text-green-700"
+                      : riskLevel === "Medium"
+                      ? "bg-yellow-100 text-yellow-700"
+                      : "bg-red-100 text-red-700"
+                    }`}>
+
+                      {riskLevel === "Low" && "🟢 Low"}
+        {riskLevel === "Medium" && "🟠 Medium"}
+        {riskLevel === "High" && "🔴 High"}
+      </span>
+    </div>
+
+    {/* Copy Full Report Button */}
+    <div className="mt-4 mb-4">
+      <button
+        onClick={() => {
+          const fullReport = `
+📊 Spam Detection Report
+─────────────────────
+🔍 Prediction: ${result === 'ham' || result === 'safe' ? '✅ Safe' : result === 'spam' || result === 'malicious' ? '🚫 Spam/Malicious' : result === 'smishing' ? '⚠️ Fraud' : '⚠️ Error'}
+📝 Message: ${text}
+📈 Confidence: ${confidence ? confidencePct + '%' : 'N/A'}
+⚠️ Risk Level: ${riskLevel}
+📅 Date: ${new Date().toLocaleString()}
+─────────────────────
+Powered by Spam Detection System`;
+          navigator.clipboard.writeText(fullReport);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }}
+        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 w-full justify-center ${
+          isDark 
+            ? "bg-slate-700 hover:bg-slate-600 text-slate-200" 
+            : "bg-slate-200 hover:bg-slate-300 text-slate-700"
+        }`}
+      >
+        {copied ? '✅ Copied!' : '📋 Copy Full Report'}
+      </button>
+    </div>
+              {explanation && result !== "Error" && (
+                <PredictionExplanation explanation={explanation} result={result} />
+              )}
+
+              {result && result !== "Error" && type !== "url" && (
+                <FeedbackWidget
+                  key={`${text}|${result}|${confidence}`}
+                  text={text}
+                  predictedLabel={result}
+                  darkMode={isDark}
+                />
+              )}
+
+              <button
+                onClick={() => {
+                  setText("");
+                  setResult("");
+                  setConfidence(null);
+                  setExplanation(null);
+                  setType("message");
+                }}
+                className={`mt-4 w-full py-3.5 rounded-xl font-bold shadow-sm transition-all ${
+                  isDark
+                    ? activeTheme.btnSecondaryDark
+                    : activeTheme.btnSecondary
+                }`}
+              >
+                Reset
+              </button>
+
+    {/* Description */}
+    <p className="text-sm opacity-75 leading-relaxed">
+      {(result === "spam" || result === "smishing" || result === "malicious") &&
+        "This content contains characteristics commonly found in spam, phishing, or malicious attacks."}
+      {(result === "ham" || result === "safe") &&
+        "No suspicious patterns were detected in this content."}
+    </p>
+  </div>
+)}
                   </div>
                 )}
 
