@@ -15,8 +15,9 @@ import {
 } from "recharts";
 import { useTheme } from "../context/ThemeContext";
 import api from "../utils/axiosInstance";
+import Footer from "../components/Footer";
 
-const API_BASE = import.meta.env.VITE_API_URI || "";
+const API_BASE = import.meta.env.VITE_PYTHON_URI || "http://127.0.0.1:5000";
 
 // Known verdict labels the ML API can return (text -> ham/spam/smishing, url -> safe/malicious).
 const LABEL_COLORS = {
@@ -65,6 +66,7 @@ export default function Dashboard() {
   const [range, setRange] = useState("daily");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [personalStats, setPersonalStats] = useState(null);
 
   const fetchAll = useCallback(async (selectedRange = range) => {
     setLoading(true);
@@ -74,12 +76,14 @@ export default function Dashboard() {
         api.get(`${API_BASE}/analytics/summary`),
         api.get(`${API_BASE}/analytics/trends`, { params: { range: selectedRange } }),
         api.get(`${API_BASE}/analytics/breakdown`),
+        api.get(`${API_BASE}/analytics/me`),
       ]);
       setSummary(summaryRes.data);
       const pivoted = pivotTrends(trendsRes.data);
       setTrends(pivoted.data);
       setTrendLabels(pivoted.labels);
       setBreakdown(pivotBreakdown(breakdownRes.data));
+      setPersonalStats(meRes.data);
     } catch (err) {
       console.error(err);
       setError("Failed to load analytics data.");
@@ -107,6 +111,27 @@ export default function Dashboard() {
       ]
     : [];
 
+  const handleExportPDF = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      // Use standard axios if interceptor not attached to 'api' object or use 'api'
+      const response = await api.get(`${API_BASE}/reports/export-pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'spam_detection_report.pdf');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      alert('Failed to download PDF report');
+    }
+  };
+
   return (
     <div
       className={`min-h-screen px-4 py-8 sm:px-8 transition-all duration-500 ${
@@ -130,6 +155,12 @@ export default function Dashboard() {
               ← Back to Detector
             </button>
             <button
+              onClick={handleExportPDF}
+              className={`px-4 py-2.5 rounded-xl font-bold text-white shadow-md active:scale-95 transition-all bg-emerald-500 hover:bg-emerald-600`}
+            >
+              📄 Export PDF
+            </button>
+            <button
               onClick={() => fetchAll()}
               disabled={loading}
               className={`px-4 py-2.5 rounded-xl font-bold text-white shadow-md active:scale-95 transition-all ${activeTheme.accent}`}
@@ -142,6 +173,28 @@ export default function Dashboard() {
         {error && (
           <div className="p-3 mb-6 text-sm font-semibold rounded-xl bg-red-500/10 border border-red-500/35 text-red-100">
             ⚠️ {error}
+          </div>
+        )}
+
+        {/* 🚀 New Personal Analytics Summary Widget */}
+        {personalStats && (
+          <div className={`mb-6 rounded-3xl p-6 shadow-xl border overflow-hidden relative ${isDark ? 'bg-gradient-to-r from-slate-900 to-slate-800 border-slate-700' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-indigo-100'}`}>
+             <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-blue-500 opacity-10 blur-2xl"></div>
+             
+             <h2 className="text-xl font-bold mb-3 flex items-center gap-2">
+               <span className="text-2xl">👋</span> Your Spam Hunting Record
+             </h2>
+             
+             <p className={`text-base md:text-lg font-medium leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+               You've scanned a total of <span className="font-black text-blue-500">{personalStats.total_predictions}</span> items. 
+               We found <span className="font-bold text-red-500">{personalStats.spam_count} Spam</span>, <span className="font-bold text-orange-500">{personalStats.smishing_count} Smishing</span>, and verified <span className="font-bold text-green-500">{personalStats.ham_count} Safe</span> items.
+             </p>
+             
+             {personalStats.most_recent && (
+               <p className="text-xs opacity-60 mt-4 font-bold uppercase tracking-wider">
+                 Last Scan: {new Date(personalStats.most_recent).toLocaleString()}
+               </p>
+             )}
           </div>
         )}
 
@@ -245,6 +298,7 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+      <Footer />
     </div>
   );
 }
