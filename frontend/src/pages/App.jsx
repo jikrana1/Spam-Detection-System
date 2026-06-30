@@ -12,6 +12,8 @@ import FeedbackWidget from "../components/FeedbackWidget";
 import Login from "./Login.jsx";
 import confetti from 'canvas-confetti';
 import Register from "./Register.jsx";
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 import EmailHeaderAnalyzer from "../components/EmailHeaderAnalyzer";
 import BulkSpamDetection from "../components/BulkSpamDetection";
 import SpamInsightsDashboard from "../components/SpamInsightsDashboard";
@@ -462,6 +464,17 @@ function App() {
                   )}
                   {loading ? "Analyzing..." : `Analyze ${type === "url" ? "URL" : type}`}
                 </button>
+
+                {loading && (
+                <div className="mt-5 p-4">
+                  <Skeleton height={200} borderRadius="16px" />
+                  <div className="mt-4">
+                    <Skeleton height={20} width="60%" />
+                    <Skeleton height={30} width="40%" />
+                    <Skeleton height={10} />
+                  </div>
+                </div>
+                )}
 
                 {/* Error Section */}
                 {result === "Error" && errorInfo && (
