@@ -387,10 +387,9 @@ const fetchHistory = async () => {
                             {item.prediction}
                         </span>
                     </div>
-                ))}
-            </div>
-        )}
-    </div>
-);
-
+                ))
+            )}
+        </div>
+    )
+};
 export default History;

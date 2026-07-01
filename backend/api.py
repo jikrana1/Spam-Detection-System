@@ -7,6 +7,7 @@ import re
 import hmac
 from collections import Counter
 from urllib.parse import urlparse
+from functools import wraps
 from dotenv import load_dotenv
 from domain_checker import analyze_text
 from email_header_analyzer import analyze_headers
@@ -115,7 +116,14 @@ def require_internal_secret():
             "error": "Forbidden: requests must originate from the trusted backend"
         }), 403
 
-
+def internal_endpoint_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get("X-Internal-Secret", "")
+        if not auth_header or not hmac.compare_digest(auth_header, INTERNAL_SECRET):
+            return jsonify({"error": "Forbidden: requests must originate from the trusted backend"}), 403
+        return f(*args, **kwargs)
+    return decorated_function
 BASE_DIR = Path(__file__).resolve().parent
 
 def resolve_path(env_var, default_filename):
@@ -471,6 +479,7 @@ def get_feature_importance():
 
 
 @app.route("/feedback", methods=["POST"])
+@internal_endpoint_required
 def feedback():
     data = request.get_json(silent=True) or {}
 
@@ -579,6 +588,7 @@ def gmail_callback():
         return jsonify({"error": f"Failed to exchange Google code: {str(e)}"}), 500
 
 @app.route("/gmail/emails", methods=["GET"])
+@internal_endpoint_required
 def gmail_emails():
     username = _require_username()
     if not username:
@@ -631,6 +641,7 @@ def outlook_callback():
         return jsonify({"error": f"Failed to exchange Outlook code: {str(e)}"}), 500
 
 @app.route("/outlook/emails", methods=["GET"])
+@internal_endpoint_required
 def outlook_emails():
     username = _require_username()
     if not username:
@@ -657,6 +668,7 @@ def outlook_emails():
         return jsonify({"error": f"Failed to fetch Outlook emails: {str(e)}"}), 500
 
 @app.route("/scan-emails", methods=["POST"])
+@internal_endpoint_required
 def scan_emails_route():
     data = request.get_json(silent=True) or {}
     provider = data.get("provider", "").lower()
