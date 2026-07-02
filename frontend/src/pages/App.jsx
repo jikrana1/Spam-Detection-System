@@ -171,6 +171,23 @@ function App() {
     }
   };
 
+
+  const getTextStats = (text) => {
+    if(!text || text.trim().length === 0) {
+      return { words: 0, chars: 0, avgWordLength: 0, sentences: 0 };
+    }
+    const words = text.trim().split(/\s+/);
+    const chars = text.replace(/\s+/g, '').length;
+    const avgWordLength = words.length > 0 ? (chars / words.length).toFixed(1) : 0;
+    const sentences = text.trim().split(/[.!?]+/).filter(Boolean).length;
+    return{
+      words: words.length,
+      chars,
+      avgWordLength,
+      sentences
+   };
+  };
+
   const detectPatterns = (text) => {
   const patterns = [];
   if (!text) return patterns;
@@ -208,6 +225,7 @@ function App() {
   
   return patterns;
 };
+
 
   const fetchWordOfTheDay = async () => {
     try {

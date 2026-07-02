@@ -51,8 +51,17 @@ const FormData = require("form-data");
 
 const app = express();
 
+
+// Trust the first proxy so express-rate-limit correctly identifies user IPs
+app.set('trust proxy', 1); 
+
+// Apply standard throttling to the heavy ML prediction route
+const { apiLimiter } = require('./middleware/rateLimiter');
+app.use('/predict', apiLimiter);
+
 // Trust the first proxy so express-rate-limit correctly identifies user IPs
 app.set('trust proxy', 1);
+
 
 const Sentry = require("@sentry/node");
 
