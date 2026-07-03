@@ -14,6 +14,7 @@ const compression = require('compression');
 const { v4: uuidv4 } = require('uuid');
 const helmet = require('helmet');
 const axios = require("axios");
+const { preventCacheStampede } = require('./middleware/cacheMiddleware');
 
 // ===== STARTUP TIMER =====
 const SERVER_START_TIME = Date.now();
@@ -298,6 +299,8 @@ const dispatchWebhook = async (userId, payload) => {
 };
 
 // Protected: only authenticated users can predict
+
+app.post('/predict', preventCacheStampede, protect, async (req, res) => {
 // ---> NEW: Added `checkCache` middleware here! <---
 app.post("/predict", predictLimiter, protect, checkCache, async (req, res) => {
   try {
