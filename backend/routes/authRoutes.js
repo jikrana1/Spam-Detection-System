@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { body } = require('express-validator');
+const { registerValidation,loginValidation,forgotPasswordValidation,resetPasswordValidation} = require("../validators/auth.validator");
 // ---> NEW: Added updateWebhook to imports
 const { register, login, getMe, googleLogin, updateAvatar, forgotPassword, resetPassword, updateWebhook } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
@@ -23,16 +23,6 @@ const upload = multer({
 });
 
 const { handleAvatarUpload } = require('../middleware/avatarUpload');
-const registerValidation = [
-  body('username').trim().isLength({ min: 3, max: 30 }).withMessage('Username must be 3–30 characters'),
-  body('email').isEmail().withMessage('Please enter a valid email'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-];
-
-const loginValidation = [
-  body('email').isEmail().withMessage('Please enter a valid email'),
-  body('password').notEmpty().withMessage('Password is required'),
-];
 
 router.post('/login', loginValidation, loginLimiter, login);
 router.post('/register', registerValidation, registerLimiter, register);
@@ -43,13 +33,6 @@ router.post('/avatar', protect, handleAvatarUpload, updateAvatar);
 // ---> NEW: Webhook Settings Route (Protected)
 router.put('/webhook', protect, updateWebhook);
 
-const forgotPasswordValidation = [
-  body('email').isEmail().withMessage('Please enter a valid email'),
-];
-
-const resetPasswordValidation = [
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-];
 
 router.post('/forgot-password', resetLimiter, forgotPasswordValidation, forgotPassword);
 router.post('/reset-password/:id/:token', resetLimiter, resetPasswordValidation, resetPassword);
