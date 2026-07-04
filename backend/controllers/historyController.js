@@ -161,9 +161,42 @@ const searchHistory = async (req, res) => {
   }
 };
 
+ const  bulkDeleteHistory = async (req, res) => {
+  try {
+    const { ids } = req.body; // Expecting an array of IDs in the request body
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request. 'ids' must be a non-empty array."
+      });
+    }
+
+    const result = await History.deleteMany({
+      _id: { $in: ids },
+      user: req.user.id
+    });
+
+    res.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: `${result.deletedCount} items deleted successfully`
+    });
+  } catch (error) {
+    console.error("Bulk delete history error: ", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+};
+
 module.exports = {
   getHistory,
   searchHistory,
   deleteHistoryItem,
   clearHistory,
+  bulkDeleteHistory
 };
+
+//  New bulk delete function
