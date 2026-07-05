@@ -15,11 +15,13 @@ const sanitizeInput = (v) => {
   return v;
 };
 
+const getSafeUserId = (req) => sanitizeInput(req.user.id);
+
 // Get logged-in user's history
 const getHistory = async (req, res) => {
   try {
     // Sanitize user ID to prevent NoSQL injection payload
-    const safeUserId = sanitizeInput(req.user.id);
+    const safeUserId = getSafeUserId(req);
 
     //Get pagination parameters from query
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -69,7 +71,7 @@ const deleteHistoryItem = async (req, res) => {
   try {
     // Sanitize parameters
     const safeHistoryId = sanitizeInput(req.params.id);
-    const safeUserId = sanitizeInput(req.user.id);
+    const safeUserId = getSafeUserId(req);
 
     const historyItem = await History.findOneAndDelete({
       _id: safeHistoryId,
@@ -91,7 +93,7 @@ const deleteHistoryItem = async (req, res) => {
 const clearHistory = async (req, res) => {
   try {
     // Sanitize user ID before bulk delete
-    const safeUserId = sanitizeInput(req.user.id);
+    const safeUserId = getSafeUserId(req);
     await History.deleteMany({ user: safeUserId });
 
     res.json({ message: "History cleared successfully" });
@@ -103,7 +105,7 @@ const clearHistory = async (req, res) => {
 
 const searchHistory = async (req, res) => {
   try {
-    const safeUserId = sanitizeInput(req.user.id);
+    const safeUserId = getSafeUserId(req);
     const { q, type, startDate, endDate } = req.query;
     
     let query = { user: safeUserId };
@@ -161,9 +163,42 @@ const searchHistory = async (req, res) => {
   }
 };
 
+ const  bulkDeleteHistory = async (req, res) => {
+  try {
+    const { ids } = req.body; // Expecting an array of IDs in the request body
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request. 'ids' must be a non-empty array."
+      });
+    }
+
+    const result = await History.deleteMany({
+      _id: { $in: ids },
+      user: req.user.id
+    });
+
+    res.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: `${result.deletedCount} items deleted successfully`
+    });
+  } catch (error) {
+    console.error("Bulk delete history error: ", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+};
+
 module.exports = {
   getHistory,
   searchHistory,
   deleteHistoryItem,
   clearHistory,
+  bulkDeleteHistory
 };
+
+//  New bulk delete function

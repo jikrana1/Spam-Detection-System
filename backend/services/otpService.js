@@ -63,10 +63,6 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true, // Don't count successful logins
-  keyGenerator: (req) => {
-    // Rate limit by email or IP
-    return req.body.email || req.ip || req.connection.remoteAddress;
-  },
 });
 
 /**

@@ -34,7 +34,14 @@ const register = async (req, res) => {
     }
 
     const { username, email, password } = req.body;
-
+    
+    if (!username || !email || !password) {
+      return res.status(200).json({
+        success: false,
+        message: "Validation failed",
+        error: "Username, email, and password are required."
+      });
+    }
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
       const field = existingUser.email === email ? 'Email' : 'Username';
@@ -66,7 +73,14 @@ const login = async (req, res) => {
     }
 
     const { email, password } = req.body;
-
+    
+    if (!email || !password) {
+      return res.status(200).json({
+        success: false,
+        message: "Validation failed",
+        error: "Email and password are required."
+      });
+    }
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password.' });
@@ -355,4 +369,4 @@ const logout = async (req, res) => {
   }
 };
 
-module.exports = { register, login, logout, getMe, googleLogin, updateAvatar, forgotPassword, resetPassword };
+module.exports = { register, login, logout, getMe, googleLogin, updateAvatar, forgotPassword, resetPassword, updateWebhook };

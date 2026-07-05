@@ -14,6 +14,8 @@ const compression = require('compression');
 const { v4: uuidv4 } = require('uuid');
 const helmet = require('helmet');
 const axios = require("axios");
+// Initialize background jobs
+require('./jobs/archivalCron');
 const { preventCacheStampede } = require('./middleware/cacheMiddleware');
 
 // ===== STARTUP TIMER =====
@@ -276,36 +278,52 @@ app.get("/health", async (req, res) => {
   }
 });
 
-// ---> NEW: Asynchronous Webhook Dispatcher (For Issue #430)
+// ---> NEW: Asynchronous Webhook Dispatcher (For Issue #430 & SSRF fix)
+const net = require('net');
+
+const isSafeWebhookUrl = (webhookUrl) => {
+  try {
+    const parsed = new URL(webhookUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'localhost') return false;
+
+    if (net.isIP(host)) {
+      if (host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.') || host.startsWith('169.254.')) return false;
+      const parts = host.split('.');
+      if (parts.length === 4) {
+        const first = parseInt(parts[0], 10);
+        const second = parseInt(parts[1], 10);
+        if (first === 172 && second >= 16 && second <= 31) return false;
+        if (first === 0) return false;
+      }
+      if (host === '::1' || host.startsWith('fe80:') || host.startsWith('fc00:') || host.startsWith('fd00:')) return false;
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
 const dispatchWebhook = async (userId, payload) => {
   try {
     const user = await User.findById(userId);
     if (user && user.webhookUrl) {
-      let parsedUrl;
-      try {
-        parsedUrl = new URL(user.webhookUrl);
-      } catch (err) {
-        console.error(`[Webhook Failed] Invalid URL ${user.webhookUrl}:`, err.message);
-        return;
-      }
-
-      // Basic SSRF protection: block localhost, local/private IP ranges
-      const hostname = parsedUrl.hostname;
-      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
-      const isPrivateIP = /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.)/.test(hostname);
-      
-      if (isLocalhost || isPrivateIP) {
-        console.error(`[Webhook Blocked] SSRF Prevention: Cannot dispatch to private/local address ${hostname}`);
-        return;
+      if (!isSafeWebhookUrl(user.webhookUrl)) {
+         console.warn(`[Webhook Blocked] SSRF protection prevented request to: ${user.webhookUrl}`);
+         return;
       }
 
       console.log(`[Webhook] Dispatching threat alert to: ${user.webhookUrl}`);
-
+      
+      // Fire and forget (Asynchronous execution via Axios) with 10s timeout
       axios.post(user.webhookUrl, {
-        event: "threat_detected",
-        payload: payload,
-        timestamp: new Date().toISOString()
-      }).catch(err => {
+        event: 'high_risk_threat_detected',
+        timestamp: new Date().toISOString(),
+        threat_details: payload
+      }, { timeout: 10000 }).catch(err => {
+        // Resilience: Catch external server errors so our app doesn't crash
         console.error(`[Webhook Failed] Could not deliver to ${user.webhookUrl}:`, err.message);
       });
     }
@@ -315,10 +333,18 @@ const dispatchWebhook = async (userId, payload) => {
 };
 
 // Protected: only authenticated users can predict
+app.post(
+  "/predict",
+  predictLimiter,
+  preventCacheStampede,
+  protect,
+  checkCache,
+  async (req, res) => {
 
 app.post('/predict', preventCacheStampede, protect, async (req, res) => {
 // ---> NEW: Added `checkCache` middleware here! <---
-app.post("/predict", predictLimiter, protect, checkCache, async (req, res) => {
+// ---> NEW: Added `checkCache` middleware here! <---
+app.post("/predict", predictLimiter, protect, async (req, res) => {
   try {
     console.log("Reached /predict");
     const { text, type, sender, confidence_threshold } = req.body;
@@ -412,11 +438,6 @@ app.post("/predict", predictLimiter, protect, checkCache, async (req, res) => {
           rule_applied: rule.type
         };
         
-        // Cache this rule match result too!
-        if (req.cacheKey) {
-          setCache(req.cacheKey, ruleResult).catch(err => console.error("Cache Save Error:", err));
-        }
-        
         return res.json(ruleResult);
       }
     }
@@ -457,14 +478,25 @@ app.post("/predict", predictLimiter, protect, checkCache, async (req, res) => {
         rule_applied: keywordMatch.type,
       };
 
-      if (req.cacheKey) {
-        setCache(req.cacheKey, kwResult).catch(err => console.error("Cache Save Error:", err));
-      }
-
       return res.json(kwResult);
     }
 
     console.log("Calling Flask...");
+
+    // Check ML Cache globally before calling Flask
+    const cacheKey = `spam_cache:${require('crypto').createHash('sha256').update(text).digest('hex')}`;
+    const { redisClient } = require("./middleware/cacheMiddleware");
+    if (redisClient && redisClient.status === 'ready') {
+      try {
+        const cachedResult = await redisClient.get(cacheKey);
+        if (cachedResult) {
+          console.log('🚀 Cache Hit! Returning data from Redis.');
+          return res.status(200).json(JSON.parse(cachedResult));
+        }
+      } catch (cacheErr) {
+        console.error('Redis Get Cache Error:', cacheErr.message);
+      }
+    }
 
     let apiUrl =
       process.env.VITE_ML_API_URI ||
@@ -505,27 +537,27 @@ app.post("/predict", predictLimiter, protect, checkCache, async (req, res) => {
       console.error(`[${req.requestId}] Failed to save history: ${historyError.message}`);
     }
 
-    const resultData = response.data;
+      const finalResponse = response.data;
+      if (typeof finalResponse.confidence === "number") {
+        finalResponse.confidence = Math.round(finalResponse.confidence * 100) / 100;
+      }
 
-    // ---> NEW: Asynchronously Save ML Result to Redis Cache <---
-    if (req.cacheKey) {
-      setCache(req.cacheKey, resultData).catch(err => console.error("Cache Save Error:", err));
-    }
+      setCache(cacheKey, finalResponse).catch(err => console.error("Cache Save Error:", err));
 
-    // ---> NEW: Trigger Webhook if threat is high risk
-    const predictionLabel = response.data.prediction ? response.data.prediction.toLowerCase() : '';
-    const confidenceScore = response.data.confidence || 0;
-    
-    if (['spam', 'malicious', 'smishing', 'phishing'].includes(predictionLabel) || confidenceScore > 0.90) {
-      dispatchWebhook(req.user.id, {
-        input_text: text,
-        type: type,
-        prediction: predictionLabel,
-        confidence: confidenceScore
-      });
-    }
+      // ---> NEW: Trigger Webhook if threat is high risk
+      const predictionLabel = finalResponse.prediction ? finalResponse.prediction.toLowerCase() : '';
+      const confidenceScore = finalResponse.confidence || 0;
+      
+      if (['spam', 'malicious', 'smishing', 'phishing'].includes(predictionLabel) || confidenceScore > 0.90) {
+        dispatchWebhook(req.user.id, {
+          input_text: text,
+          type: type,
+          prediction: predictionLabel,
+          confidence: confidenceScore
+        });
+      }
 
-    return res.json(resultData);
+      return res.json(finalResponse);
   } catch (error) {
     Sentry.captureException(error, {
       tags: {
@@ -1374,6 +1406,44 @@ app.get("/imap/status", protect, async (req, res) => {
   }
 });
 
+//Get activity data for Heatmap
+app.get('/api/activity/:userId', protect, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const { year, month } = req.query;
+
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+
+    const activities = await History.aggregate([
+      {
+        $match: {
+          user: mongoose.Types.ObjectId(userId),
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            day: { $dayOfMonth: "$createdAt" },
+            month: { $month: "$createdAt" },
+          },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const result = {};
+   activities.forEach(item => {
+      result[item._id] = item.count;
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error fetching activity data:", error);
+    res.status(500).json({ error: "Something went wrong" });
+  }
+});
 // Protected: update the scheduled scan interval for the connected IMAP inbox
 app.put("/imap/schedule", protect, async (req, res) => {
   try {
