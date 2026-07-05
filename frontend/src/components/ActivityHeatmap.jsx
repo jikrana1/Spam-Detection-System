@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import api from '../api';
+// import api from '../api';
 
 const ActivityHeatmap = ({ userId, startDate, endDate }) => {
     const [activityData, setActivityData] = useState([]);

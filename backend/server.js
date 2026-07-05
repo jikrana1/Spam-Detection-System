@@ -64,7 +64,7 @@ const { apiLimiter } = require('./middleware/rateLimiter');
 app.use('/predict', apiLimiter);
 
 // Trust the first proxy so express-rate-limit correctly identifies user IPs
-app.set('trust proxy', 1);
+
 
 
 const Sentry = require("@sentry/node");
@@ -340,11 +340,6 @@ app.post(
   protect,
   checkCache,
   async (req, res) => {
-
-app.post('/predict', preventCacheStampede, protect, async (req, res) => {
-// ---> NEW: Added `checkCache` middleware here! <---
-// ---> NEW: Added `checkCache` middleware here! <---
-app.post("/predict", predictLimiter, protect, async (req, res) => {
   try {
     console.log("Reached /predict");
     const { text, type, sender, confidence_threshold } = req.body;
@@ -577,8 +572,6 @@ app.post("/predict", predictLimiter, protect, async (req, res) => {
     return res.status(status).json(body);
   }
 });
-
-
 
 
 // Protected: record user feedback on a prediction (forwarded to the ML API)
@@ -1610,4 +1603,3 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = { app, applyRulesToEmails };
- 
