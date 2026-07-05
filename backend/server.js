@@ -1,5 +1,5 @@
 const { checkCache, setCache } = require('./middleware/cacheMiddleware');
-const { formatError, errorHandler, errorCodes, classifyMlApiError } = require('./utils/errorHelper');
+const { formatError, errorHandler, errorCodes, classifyMlApiError , handleMlApiError } = require('./utils/errorHelper');
 require("dotenv").config();
 const dns = require("dns");
 const validateEnv = require('./utils/validateEnv');
@@ -559,22 +559,11 @@ app.post("/predict", predictLimiter, protect, async (req, res) => {
 
       return res.json(finalResponse);
   } catch (error) {
-    Sentry.captureException(error, {
-      tags: {
-        endpoint: '/predict',
-        userId: req.user?.id || 'anonymous'
-      },
-      extra: {
-        text: req.body?.text?.substring(0, 100),
-        type: req.body?.type,
-        errorMessage: error.message
-      }
+    return handleMlApiError(error, req, res, {
+      endpoint: '/predict',
+      userId: req.user?.id,
+      extra: { text: req.body?.text?.substring(0, 100), type: req.body?.type }
     });
-
-    console.error(`[${req.requestId}]`, error.message);
-
-    const { status, body } = classifyMlApiError(error);
-    return res.status(status).json(body);
   }
 });
 
@@ -604,24 +593,11 @@ app.post("/feedback", protect, async (req, res) => {
 
     res.status(response.status).json(response.data);
   } catch (error) {
-    // Capture error in Sentry with context
-    Sentry.captureException(error, {
-      tags: {
-        endpoint: '/feedback',
-        userId: req.user?.id || 'anonymous'
-      },
-      extra: {
-        text: text?.substring(0, 100), // Truncate for privacy
-        predicted_label,
-        correct_label
-      }
+    return handleMlApiError(error, req, res, {
+      endpoint: '/feedback',
+      userId: req.user?.id,
+      extra: { text: req.body?.text?.substring(0, 100) }
     });
-
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(`[${req.requestId}] Feedback error:`, error.message);
-    res.status(500).json({ error: "Something went wrong" });
   }
 });
 
@@ -684,18 +660,11 @@ app.post(
         return res.json(response.data);
       }
     } catch (error) {
-      if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-        console.error("Flask ML API is unavailable:", error.message);
-        return res.status(503).json({
-          error:
-            "Flask ML API is currently unavailable. Please try again later.",
-        });
-      }
-      if (error.response) {
-        return res.status(error.response.status).json(error.response.data);
-      }
-      console.error(error.message);
-      res.status(500).json({ error: "Something went wrong" });
+      return handleMlApiError(error, req, res, {
+        endpoint: '/analyze-email-header',
+        userId: req.user?.id,
+        extra: { fileSize: req.file?.size }
+      });
     }
   },
 );
@@ -726,28 +695,11 @@ app.post("/bulk-predict", protect, upload.single("file"), async (req, res) => {
 
     res.json(response.data);
   } catch (error) {
-    //Capture error in Sentry 
-    Sentry.captureException(error, {
-      tags: {
-        endpoint: '/bulk-predict',
-        userId: req.user?.id || 'anonymous'
-      },
-      extra: {
-        fileSize: req.file?.size,
-        fileName: req.file?.originalname,
-      }
+    return handleMlApiError(error, req, res, {
+      endpoint: '/bulk-predict',
+      userId: req.user?.id,
+      extra: { fileSize: req.file?.size, fileName: req.file?.originalname }
     });
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
   }
 });
 
@@ -804,23 +756,16 @@ app.post(
 
       response.data.pipe(res);
     } catch (error) {
-      if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-        console.error("Flask ML API is unavailable:", error.message);
-        return res.status(503).json({
-          error:
-            "Flask ML API is currently unavailable. Please try again later.",
-        });
+      if (error.response && typeof error.response.data.pipe === 'function') {
+        res.status(error.response.status);
+        error.response.data.pipe(res);
+        return;
       }
-      if (error.response) {
-        if (typeof error.response.data.pipe === "function") {
-          res.status(error.response.status);
-          error.response.data.pipe(res);
-          return;
-        }
-        return res.status(error.response.status).json(error.response.data);
-      }
-      console.error(error.message);
-      res.status(500).json({ error: "Something went wrong" });
+      return handleMlApiError(error, req, res, {
+        endpoint: '/bulk-predict/export',
+        userId: req.user?.id,
+        extra: { fileSize: req.file?.size }
+      });
     }
   },
 );
@@ -837,17 +782,10 @@ app.get("/spam-insights", protect, async (req, res) => {
 
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -857,17 +795,10 @@ app.get("/api/wordcloud", async (req, res) => {
     const response = await axios.get(`${ML_API_BASE}/api/wordcloud`);
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -877,17 +808,10 @@ app.get("/importance", async (req, res) => {
     const response = await axios.get(`${ML_API_BASE}/importance`);
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -902,17 +826,10 @@ app.get("/gmail/auth-url", protect, async (req, res) => {
     });
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -946,17 +863,10 @@ app.get("/gmail/connect", protect, async (req, res) => {
     });
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -971,19 +881,10 @@ app.get("/gmail/emails", protect, async (req, res) => {
     });
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      const status =
-        error.response.status === 401 ? 400 : error.response.status;
-      return res.status(status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -998,17 +899,10 @@ app.get("/outlook/auth-url", protect, async (req, res) => {
     });
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -1042,17 +936,10 @@ app.get("/outlook/connect", protect, async (req, res) => {
     });
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -1066,19 +953,10 @@ app.get("/outlook/emails", protect, async (req, res) => {
     });
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      const status =
-        error.response.status === 401 ? 400 : error.response.status;
-      return res.status(status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -1205,19 +1083,11 @@ app.post("/scan-emails", protect, async (req, res) => {
       safe_count: ruleResults.safeCount
     });
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      const status =
-        error.response.status === 401 ? 400 : error.response.status;
-      return res.status(status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: '/scan-emails',
+      userId: req.user?.id,
+      extra: { provider: req.body?.provider }
+    });
   }
 });
 
@@ -1392,17 +1262,10 @@ app.get("/imap/status", protect, async (req, res) => {
     });
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -1414,17 +1277,10 @@ app.put("/imap/schedule", protect, async (req, res) => {
     });
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -1438,17 +1294,10 @@ app.post("/imap/disconnect", protect, async (req, res) => {
     );
     res.json(response.data);
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -1468,18 +1317,10 @@ app.post("/imap/scan-now", protect, async (req, res) => {
       safe_count: ruleResults.safeCount
     });
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      const status = error.response.status === 401 ? 400 : error.response.status;
-      return res.status(status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
@@ -1496,17 +1337,10 @@ app.get("/imap/scan-results", protect, async (req, res) => {
       results: ruleResults.emails
     });
   } catch (error) {
-    if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-      console.error("Flask ML API is unavailable:", error.message);
-      return res.status(503).json({
-        error: "Flask ML API is currently unavailable. Please try again later.",
-      });
-    }
-    if (error.response) {
-      return res.status(error.response.status).json(error.response.data);
-    }
-    console.error(error.message);
-    res.status(500).json({ error: "Something went wrong" });
+    return handleMlApiError(error, req, res, {
+      endpoint: req.path,
+      userId: req.user?.id
+    });
   }
 });
 
