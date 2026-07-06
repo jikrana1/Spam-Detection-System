@@ -34,7 +34,14 @@ const register = async (req, res) => {
     }
 
     const { username, email, password } = req.body;
-
+    
+    if (!username || !email || !password) {
+      return res.status(200).json({
+        success: false,
+        message: "Validation failed",
+        error: "Username, email, and password are required."
+      });
+    }
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
       const field = existingUser.email === email ? 'Email' : 'Username';
@@ -66,7 +73,14 @@ const login = async (req, res) => {
     }
 
     const { email, password } = req.body;
-
+    
+    if (!email || !password) {
+      return res.status(200).json({
+        success: false,
+        message: "Validation failed",
+        error: "Email and password are required."
+      });
+    }
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password.' });
@@ -222,6 +236,11 @@ const updateAvatar = async (req, res) => {
 
 const forgotPassword = async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: errors.array()[0].msg });
+    }
+
     const { email } = req.body;
     const user = await User.findOne({ email });
     if (!user) {
@@ -247,9 +266,11 @@ const forgotPassword = async (req, res) => {
       },
     });
 
+    const emailFrom = process.env.EMAIL_FROM || '"Spam Detection System" <noreply@spamdetection.local>';
+
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       await transporter.sendMail({
-        from: '"Spam Detection System" <noreply@spamdetection.local>',
+        from: emailFrom,
         to: user.email,
         subject: 'Password Reset Request',
         text: `Please use the following link to reset your password: ${resetLink} \n\nThis link expires in 15 minutes.`,
@@ -267,6 +288,11 @@ const forgotPassword = async (req, res) => {
 
 const resetPassword = async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: errors.array()[0].msg });
+    }
+
     const { id, token } = req.params;
     const { password } = req.body;
 
@@ -292,6 +318,35 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// ---> NEW: Webhook Update Controller (For Issue #430)
+const updateWebhook = async (req, res) => {
+  try {
+    const { webhookUrl } = req.body;
+    
+    // We allow empty strings to let the user "delete/disable" their webhook
+    const newWebhookValue = (webhookUrl && webhookUrl.trim() !== '') ? webhookUrl.trim() : null;
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { webhookUrl: newWebhookValue },
+      { new: true, runValidators: true } // runValidators ensures the Regex in schema is checked
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ message: 'Webhook URL updated successfully!', user });
+  } catch (err) {
+    console.error('Webhook update error:', err);
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ error: 'Invalid Webhook URL format. Must start with http:// or https://' });
+    }
+    res.status(500).json({ error: 'Server error. Please try again.' });
+  }
+};
+
+module.exports = { register, login, getMe, googleLogin, updateAvatar, forgotPassword, resetPassword, updateWebhook };
 const logout = async (req, res) => {
   try {
     let token;
@@ -314,4 +369,4 @@ const logout = async (req, res) => {
   }
 };
 
-module.exports = { register, login, logout, getMe, googleLogin, updateAvatar, forgotPassword, resetPassword };
+module.exports = { register, login, logout, getMe, googleLogin, updateAvatar, forgotPassword, resetPassword, updateWebhook };
