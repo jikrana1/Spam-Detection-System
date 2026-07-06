@@ -17,7 +17,8 @@ const axios = require("axios");
 // Initialize background jobs
 require('./jobs/archivalCron');
 const { preventCacheStampede } = require('./middleware/cacheMiddleware');
-const validationMessages = require("./utils/validationMessages");
+const healthRoutes = require("./routes/healthRoutes");
+
 // ===== STARTUP TIMER =====
 const SERVER_START_TIME = Date.now();
 const startupLogs = [];
@@ -232,6 +233,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/history", historyRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/chat", chatRoutes);
+app.get("/health", healthRoutes);
 app.use("/api/rules", ruleRoutes);
 app.use("/api/reports", reportRoutes);
 
@@ -253,19 +255,6 @@ app.get("/", (req, res) => {
 });
 
 // Health check endpoint (Advanced)
-app.get("/health", async (req, res) => {
-  try {
-    const healthStatus = await getHealthStatus();
-    const statusCode = healthStatus.status === "healthy" ? 200 : 503;
-    res.status(statusCode).json(healthStatus);
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to retrieve health status',
-      error: error.message
-    });
-  }
-});
 
 // ---> NEW: Asynchronous Webhook Dispatcher (For Issue #430 & SSRF fix)
 const net = require('net');
