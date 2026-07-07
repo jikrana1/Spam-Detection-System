@@ -1375,23 +1375,6 @@ app.post("/imap/connect", protect, async (req, res) => {
 });
 
 // ========================================
-// ERROR HANDLERS
-// ========================================
-
-app.use((err, req, res, next) => {
-  if (err.type === 'entity.too.large' || err.message === 'request entity too large') {
-    return res.status(413).json({
-      success: false,
-      error: 'Payload too large. Please reduce the size of your request.',
-      message: 'Request size exceeds 1MB limit.',
-    });
-  }
-  next(err);
-});
-
-app.use(errorHandler);
-
-// ========================================
 // START SERVER
 // ========================================
 
@@ -1510,23 +1493,6 @@ const gracefulShutdown = async (signal) => {
 // 3. Assign the listeners
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-module.exports = { app, applyRulesToEmails };
-
-// ========================================
-// START SERVER
-// ========================================
-
-// const PORT = config.port;
-// const server = app.listen(PORT, () => {
-//   const totalTime = Date.now() - SERVER_START_TIME;
-//   displayBanner();
-//   console.log(`⏱️ Total startup time: ${totalTime}ms`);
-// });
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-module.exports = { app, applyRulesToEmails };
 
 // ===== SEARCH HISTORY =====
 app.get('/api/history/search', protect, async (req, res) => {
@@ -1738,3 +1704,22 @@ app.get("/imap/scan-results", protect, async (req, res) => {
     res.status(500).json({ error: "Something went wrong" });
   }
 });
+
+// ========================================
+// ERROR HANDLERS
+// ========================================
+
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.too.large' || err.message === 'request entity too large') {
+    return res.status(413).json({
+      success: false,
+      error: 'Payload too large. Please reduce the size of your request.',
+      message: 'Request size exceeds 1MB limit.',
+    });
+  }
+  next(err);
+});
+
+app.use(errorHandler);
+
+module.exports = { app, applyRulesToEmails };
