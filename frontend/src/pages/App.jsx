@@ -805,8 +805,8 @@ const analyzeEmojiSentiment = (text) => {
                       darkMode={isDark} 
                     />
                     {rateLimitError && (
-                    <div className="mt-2 p-2 text-sm text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 rounded-lg">
-                    {rateLimitError}
+                      <div className="mt-2 p-2 text-sm text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 rounded-lg">
+                      {rateLimitError}
                     </div>
                     )}
 
