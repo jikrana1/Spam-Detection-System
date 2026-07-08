@@ -1,9 +1,50 @@
+
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { validationResult } = require('express-validator');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const fs = require('fs');
+
+const express = require('express');
+const router = express.Router();
+
+const { body } = require('express-validator');
+const {
+  register,
+  login,
+  logout,
+  getMe,
+  googleLogin,
+  updateAvatar,
+  forgotPassword,
+  resetPassword,
+  updateWebhook,
+  requestOTP,
+  verifyOTP,
+  getOTPStatus,
+  changePassword,
+  getSessionStatus
+} = require('../controllers/authController');
+
+const {
+  registerValidation,
+  loginValidation,
+  forgotPasswordValidation,
+  resetPasswordValidation
+} = require('../validators/auth.validator');
+
+const { protect } = require('../middleware/authMiddleware');
+const { 
+  registerLimiter, 
+  loginLimiter, 
+  resetLimiter,
+  otpLimiter,
+  verificationLimiter,
+  apiLimiter
+} = require('../middleware/rateLimiter');
+const multer = require('multer');
+
 const path = require('path');
 const sharp = require('sharp');
 const BlacklistedToken = require('../models/BlacklistedToken');
@@ -31,6 +72,7 @@ const buildAuthResponse = (user, token) => ({
     permissions: user.permissions || [],
   },
 });
+
 
 // ============================================
 // AUTH CONTROLLERS
