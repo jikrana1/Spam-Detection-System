@@ -31,26 +31,15 @@ const utilityRoutes = require("./routes/utilityRoutes");
 // ===== STARTUP TIMER =====
 const SERVER_START_TIME = Date.now();
 const startupLogs = [];
-
+const { configureAxios } = require('./config/axios');
+configureAxios(); // Apply the global axios configuration
 const logStartupTime = (component, startTime) => {
   const elapsed = Date.now() - startTime;
   startupLogs.push({ component, elapsed });
   logger.info(`⏱️ ${component} loaded in ${elapsed}ms`);
 };
 
-// Configure global request interceptor to append the internal secret API key
-axios.interceptors.request.use(
-  (config) => {
-    config.timeout = 15000; // 15 seconds timeout
-    // No hardcoded fallback: INTERNAL_SECRET is validated as mandatory at
-    // startup (see utils/validateEnv.js), so it is guaranteed present here.
-    config.headers["X-Internal-Secret"] = process.env.INTERNAL_SECRET;
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+
 const mongoose = require("mongoose");
 
 const History = require("./models/History");
