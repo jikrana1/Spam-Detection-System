@@ -258,7 +258,6 @@ app.get("/", (req, res) => {
 });
 
 
-<<<<<<< HEAD
 // Protected: only authenticated users can predict
 app.post("/predict", predictLimiter, protect, async (req, res) => {
   try {
@@ -1265,8 +1264,6 @@ app.use((err, req, res, next) => {
 });
 
 app.use(errorHandler);
-=======
->>>>>>> 659f62b89d68ce01eae518e76844ff57834ee88d
 
 // ========================================
 // START SERVER
