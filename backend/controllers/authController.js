@@ -383,6 +383,19 @@ const resetPassword = async (req, res) => {
     user.password = password;
     await user.save();
 
+    // ==========================================
+    // 🔥 NEW: EXPLICITLY INVALIDATE RESET TOKEN
+    // (Single-use token policy)
+    // ==========================================
+    await BlacklistedToken.blacklist(
+      token,
+      user._id,
+      'PASSWORD_RESET_USED',
+      req.ip || req.connection?.remoteAddress,
+      req.headers['user-agent']
+    );
+    // ==========================================
+
     res.json({ message: 'Password has been successfully reset. You can now login.' });
   } catch (err) {
     console.error('Reset password error:', err);
@@ -650,9 +663,4 @@ module.exports = {
   buildAuthResponse
 };
 
-module.exports = { register, login, logout, getMe, googleLogin, updateAvatar, forgotPassword, resetPassword, updateWebhook };
-
-
-  getSessionStatus
-};
 
